@@ -2,64 +2,58 @@ import socket
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from sklearn.model_selection import train_test_split
 import numpy as np
 from scipy.signal import find_peaks
 import pickle
-import Crypto
-from Crypto.Cipher import AES
-import os
-import wfdb
 
 # Konfigurasi Klien
-HOST = '127.0.0.1'  # Loopback address (harus sama dengan server)
-PORT = 65432  # Port server (harus sama dengan server)
-KEY = b'Sixteen byte key'  # Kunci Enkripsi (harus sama dengan server!)
+HOST = '127.0.0.1'  # Loopback address
+PORT = 65432  # Port server
 
 # Definisi Model (Harus sama dengan server!)
 class SimpleCNN(nn.Module):
     def __init__(self):
         super(SimpleCNN, self).__init__()
-        self.conv1 = nn.Conv1d(in_channels=1, out_channels=16, kernel_size=5)
+        self.conv1 = nn.Conv1d(in_channels=1, out_channels=16, kernel_size=5, padding=2)
         self.relu1 = nn.ReLU()
         self.pool1 = nn.MaxPool1d(kernel_size=2)
+        self.conv2 = nn.Conv1d(in_channels=16, out_channels=32, kernel_size=5, padding=2)
+        self.relu2 = nn.ReLU()
+        self.pool2 = nn.MaxPool1d(kernel_size=2)
         self.flatten = nn.Flatten()
-        self.fc1 = nn.Linear(16 * 122, 10)
+        self.fc1 = nn.Linear(32 * 32, 64)
+        self.relu3 = nn.ReLU()
+        self.fc2 = nn.Linear(64, 10)
         self.softmax = nn.Softmax(dim=1)
 
     def forward(self, x):
         x = self.conv1(x)
         x = self.relu1(x)
         x = self.pool1(x)
+        x = self.conv2(x)
+        x = self.relu2(x)
+        x = self.pool2(x)
         x = self.flatten(x)
         x = self.fc1(x)
+        x = self.relu3(x)
+        x = self.fc2(x)
         x = self.softmax(x)
         return x
 
-# Fungsi untuk memuat dan memproses data MIT-BIH menggunakan wfdb
 def load_mitbih_data(client_id, resample_size=128):
     """
-    Memuat, memproses, dan mengekstrak fitur dari data MIT-BIH untuk klien tertentu.
+    Memuat, memproses, dan mengekstrak fitur dari data sintetis.
     """
-    # Ganti dengan path ke dataset MIT-BIH Anda
-    record = wfdb.rdrecord('mitbih_database/100')  # Ganti dengan rekaman yang sesuai
-    ecg_signal = record.p_signal[:, 0]  # Ambil hanya satu lead ECG
-
-    # Simulasikan label acak karena dataset MIT-BIH tidak langsung menyertakan label
-    labels = np.random.randint(0, 5, len(ecg_signal))
-
-    # Pemisahan data antar klien
-    if client_id == 1:
-        ecg_signal = ecg_signal[:len(ecg_signal) // 2]
-        labels = labels[:len(labels) // 2]
-    else:
-        ecg_signal = ecg_signal[len(ecg_signal) // 2:]
-        labels = labels[len(labels) // 2:]
+    np.random.seed(client_id)
+    
+    # Buat data sintetis
+    ecg_signal = np.random.randn(1000)
+    labels = np.random.randint(0, 10, len(ecg_signal))
 
     # Normalisasi
     ecg_signal = (ecg_signal - np.mean(ecg_signal)) / np.std(ecg_signal)
 
-    # Deteksi Puncak R
+    # Deteksi Puncak 
     peaks, _ = find_peaks(ecg_signal, distance=50)
 
     # Ekstraksi Fitur
@@ -81,26 +75,33 @@ def load_mitbih_data(client_id, resample_size=128):
 
     return np.array(features), np.array(feature_labels)
 
-# Fungsi untuk Mengenkripsi Data
-def encrypt(data, key):
-    cipher = Crypto.Cipher.AES.new(key, Crypto.Cipher.AES.MODE_EAX)
-    nonce = cipher.nonce
-    ciphertext, tag = cipher.encrypt_and_digest(data)
-    return nonce, ciphertext, tag
+def send_data(sock, data):
+    """Kirim data dengan format panjang + data"""
+    # Kirim panjang data (4 byte)
+    data_length = len(data)
+    sock.sendall(data_length.to_bytes(4, byteorder='big'))
+    
+    # Kirim data
+    sock.sendall(data)
 
-# Fungsi untuk Mendekripsi Data
-def decrypt(nonce, ciphertext, tag, key):
-    cipher = Crypto.Cipher.AES.new(key, Crypto.Cipher.AES.MODE_EAX, nonce=nonce)
-    return cipher.decrypt_and_verify(ciphertext, tag)
+def receive_data(sock):
+    """Terima data dengan format panjang + data"""
+    # Terima panjang data
+    length_bytes = sock.recv(4)
+    data_length = int.from_bytes(length_bytes, byteorder='big')
+    
+    # Terima data
+    return sock.recv(data_length)
 
-# Fungsi untuk melatih model lokal
 def train_local_model(model, train_loader, epochs=10, learning_rate=0.001):
+    """Latih model lokal"""
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
     for epoch in range(epochs):
-        for i, (inputs, labels) in enumerate(train_loader):
-            inputs = inputs.float().unsqueeze(1)  # Sesuaikan dimensi untuk Conv1D
+        total_loss = 0
+        for inputs, labels in train_loader:
+            inputs = inputs.float().unsqueeze(1)
             labels = labels.long()
 
             optimizer.zero_grad()
@@ -109,36 +110,26 @@ def train_local_model(model, train_loader, epochs=10, learning_rate=0.001):
             loss.backward()
             optimizer.step()
 
-            if (i + 1) % 100 == 0:
-                print(f'Epoch [{epoch+1}/{epochs}], Step [{i+1}], Loss: {loss.item():.4f}')
+            total_loss += loss.item()
+
+        print(f'Epoch [{epoch+1}/{epochs}], Loss: {total_loss / len(train_loader):.4f}')
 
     return model
 
-# Fungsi untuk menambahkan noise (Differential Privacy sederhana)
-def add_noise(model, sensitivity, epsilon):
-    """Menambahkan noise ke parameter model untuk differential privacy."""
-    with torch.no_grad():
-        for param in model.parameters():
-            noise = torch.randn_like(param) * (sensitivity / epsilon)
-            param.add_(noise)
-    return model
-
-if __name__ == '__main__':
-    client_id = 1  # Ubah sesuai klien
+def main():
+    client_id = 1
     print(f"Klien {client_id} dimulai...")
 
     # Muat Data Lokal
     features, labels = load_mitbih_data(client_id)
 
-    # Ubah data menjadi format PyTorch
+    # Persiapan data
     X_train = torch.tensor(features, dtype=torch.float32)
     y_train = torch.tensor(labels, dtype=torch.long)
 
-    # Buat DataLoader
     train_dataset = torch.utils.data.TensorDataset(X_train, y_train)
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=32, shuffle=True)
 
-    # Inisialisasi Model Lokal
     local_model = SimpleCNN()
 
     # Koneksi ke Server
@@ -150,29 +141,22 @@ if __name__ == '__main__':
             # Latih Model Lokal
             trained_model = train_local_model(local_model, train_loader)
 
-            # Tambahkan Noise (Differential Privacy - Sederhana!)
-            sensitivity = 0.1
-            epsilon = 1.0
-            trained_model = add_noise(trained_model, sensitivity, epsilon)
-
-            # Kirim Model ke Server
+            # Serialisasi model
             model_data = pickle.dumps(trained_model)
-            nonce, ciphertext, tag = encrypt(model_data, KEY)
+            
+            # Kirim model
+            send_data(s, model_data)
 
-            # Kirim data yang sudah dienkripsi
-            s.sendall(nonce)
-            s.sendall(ciphertext)
-            s.sendall(tag)
-
-            # Terima model global dari server
-            nonce = s.recv(16)
-            ciphertext = s.recv(4096)
-            tag = s.recv(16)
-            decrypted_data = decrypt(nonce, ciphertext, tag, KEY)
-            updated_global_model = pickle.loads(decrypted_data)
+            # Terima model global
+            received_data = receive_data(s)
+            updated_global_model = pickle.loads(received_data)
+            
             print("Model global diterima dan diperbarui.")
+
         except Exception as e:
-            print(f"Error: {e}")
-        finally:
-            s.close()
-            print(f"Klien {client_id} selesai.")
+            print(f"Error tidak terduga: {e}")
+
+    print(f"Klien {client_id} selesai.")
+
+if __name__ == '__main__':
+    main()
