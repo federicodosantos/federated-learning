@@ -5,6 +5,7 @@ import torch.nn as nn
 import torch.optim as optim
 from collections import OrderedDict
 import pickle
+import os
 
 # Konfigurasi Server
 HOST = '0.0.0.0'  # Loopback address
@@ -39,6 +40,20 @@ class SimpleCNN(nn.Module):
         x = self.fc2(x)
         x = self.softmax(x)
         return x
+
+def save_model(model, filename='global_model.pkl'):
+    """Simpan model ke file pickle"""
+    try:
+        # Pastikan direktori ada
+        os.makedirs(os.path.dirname(filename) or '.', exist_ok=True)
+        
+        # Simpan model lengkap
+        with open(filename, 'wb') as f:
+            pickle.dump(model, f)
+        
+        print(f"Model berhasil disimpan di {filename}")
+    except Exception as e:
+        print(f"Kesalahan menyimpan model: {e}")
 
 def send_large_data(sock, data):
     """Kirim data besar dengan pemeriksaan ukuran"""
@@ -103,6 +118,9 @@ def handle_client(conn, addr, global_model, client_models, client_weights, clien
             
             # Kirim model global
             send_large_data(conn, model_data)
+            
+            # Simpan model global ke file
+            save_model(updated_global_model, f'global_model_round_{client_index + 1}.pkl')
     
     except Exception as e:
         print(f"Error handling client {addr}: {e}")
@@ -141,6 +159,9 @@ def main():
             thread.join()
         
         print("Semua klien selesai, server ditutup.")
+        
+        # Simpan model global akhir
+        save_model(global_model, 'final_global_model.pkl')
 
 if __name__ == '__main__':
     main()
