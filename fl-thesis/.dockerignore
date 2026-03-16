@@ -1,0 +1,14 @@
+# ignore datasets
+fl_thesis/dataset/*
+*.jpg
+*.png
+
+# ignore notebooks
+fl_thesis/*.ipynb
+
+# ignore caches
+fl_thesis/__pycache__/
+fl_thesis/.ipynb_checkpoints/
+fl_thesis/*.pt
+fl_thesis/*.pth
+
