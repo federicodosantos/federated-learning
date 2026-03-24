@@ -12,11 +12,14 @@ WORKDIR /app
 COPY --chown=app:app pyproject.toml .
 
 # 1. Remove any leftover torch lines (safety)
-RUN sed -i '/torch/d' pyproject.toml
+RUN sed -i '/"torch==/d' pyproject.toml && \
+    sed -i '/"torchvision==/d' pyproject.toml
 
 # 2. Install PyTorch CPU manually
 RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu \
-    torch torchvision
+    torch==2.7.1 \
+    torchvision==0.22.1 \
+    torchao>=0.15.0
 
 # 3. Install all Flower app dependencies
 RUN pip install --no-cache-dir .
