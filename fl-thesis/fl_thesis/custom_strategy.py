@@ -62,6 +62,8 @@ class FedAvgWithCost(FedAvg):
     ) -> List[Tuple[ClientProxy, FitIns]]:
         """Kuantisasi global model sebelum broadcast ke klien."""
         config = {}
+        # Bytes yang akan dikirim ke masing-masing klien (diisi di bawah)
+        tensor_bytes_to_send: List[bytes] = []
 
         if self.quantization != "none":
             log(
@@ -78,7 +80,7 @@ class FedAvgWithCost(FedAvg):
                 # Serialisasi metadata
                 scales_serialized = json.dumps([s.tolist() for s, _ in params_list])
                 zero_points_serialized = json.dumps([zp.tolist() for _, zp in params_list])
-                
+
                 # Sinkronisasi shapes
                 self.shapes = [arr.shape for arr in current_ndarrays]
                 shapes_serialized = json.dumps([list(s) for s in self.shapes])
@@ -101,7 +103,7 @@ class FedAvgWithCost(FedAvg):
                     }
                 )
 
-                self._log_download_cost(server_round, quantized_bytes)
+                tensor_bytes_to_send = quantized_bytes
                 log(
                     level=logging.INFO,
                     msg=f"[Round {server_round}] Global model quantized & metadata disertakan di config.",
@@ -112,15 +114,20 @@ class FedAvgWithCost(FedAvg):
                     level=logging.WARNING,
                     msg=f"[Round {server_round}] Gagal kuantisasi untuk broadcast: {e}. Menggunakan float32.",
                 )
+                # Fallback: gunakan parameter float32 dari hasil agregasi sebelumnya
                 if self.last_aggregated_ndarrays is not None:
-                    float32_bytes = [arr.tobytes() for arr in self.last_aggregated_ndarrays]
-                    self._log_download_cost(server_round, float32_bytes)
+                    tensor_bytes_to_send = [arr.tobytes() for arr in self.last_aggregated_ndarrays]
+                else:
+                    tensor_bytes_to_send = [t for t in parameters.tensors]
         else:
+            # Tidak ada kuantisasi — kirim parameter float32 apa adanya
             if self.last_aggregated_ndarrays is not None:
-                float32_bytes = [arr.tobytes() for arr in self.last_aggregated_ndarrays]
-                self._log_download_cost(server_round, float32_bytes)
+                tensor_bytes_to_send = [arr.tobytes() for arr in self.last_aggregated_ndarrays]
+            else:
+                # Round 1: gunakan initial parameters
+                tensor_bytes_to_send = [t for t in parameters.tensors]
 
-        # Meminta client configuration melalui strategy parent
+        # Meminta client configuration melalui strategy parent (menentukan jumlah klien yang disampling)
         try:
             fit_ins_list = super().configure_fit(server_round, parameters, client_manager)
         except Exception as e:
@@ -129,6 +136,10 @@ class FedAvgWithCost(FedAvg):
                 msg=f"[Round {server_round}] Error saat memanggil super().configure_fit: {e}",
             )
             return []
+
+        # Log biaya download SETELAH sampling agar kita tahu jumlah klien yang tepat
+        num_sampled_clients = len(fit_ins_list)
+        self._log_download_cost(server_round, tensor_bytes_to_send, num_sampled_clients)
 
         # Injeksi metadata config kuantisasi ke tiap-tiap message
         if config:
@@ -256,21 +267,31 @@ class FedAvgWithCost(FedAvg):
         self,
         server_round: int,
         tensor_bytes: List[bytes],
+        num_clients: int = 1,
     ) -> None:
-        """Log biaya komunikasi download (server → klien)."""
-        download_mb = sum(len(t) for t in tensor_bytes) / (1024 * 1024)
-        self.total_download_cost_mb += download_mb
+        """Log biaya komunikasi download (server → setiap klien).
+
+        Args:
+            server_round: Ronde pelatihan saat ini.
+            tensor_bytes: Bytes payload yang dikirim ke masing-masing klien.
+            num_clients: Jumlah klien yang menerima broadcast pada ronde ini.
+        """
+        download_mb_per_client = sum(len(t) for t in tensor_bytes) / (1024 * 1024)
+        # Total download = ukuran per klien × jumlah klien
+        download_mb_total = download_mb_per_client * num_clients
+        self.total_download_cost_mb += download_mb_total
 
         savings_str = ""
         if self.quantization != "none" and self.last_aggregated_ndarrays is not None:
             float32_mb = sum(a.nbytes for a in self.last_aggregated_ndarrays) / (1024 * 1024)
             if float32_mb > 0:
-                savings = (1.0 - download_mb / float32_mb) * 100
+                savings = (1.0 - download_mb_per_client / float32_mb) * 100
                 savings_str = f" ({savings:.1f}% hemat vs float32)"
 
         log(
             level=logging.INFO,
-            msg=f"[Round {server_round}] Download: {download_mb:.4f} MB/client{savings_str}",
+            msg=f"[Round {server_round}] Download: {download_mb_per_client:.4f} MB/client × {num_clients} clients"
+                f" = {download_mb_total:.4f} MB total{savings_str}",
         )
         log(
             level=logging.INFO,
@@ -281,7 +302,8 @@ class FedAvgWithCost(FedAvg):
             {
                 "round": server_round,
                 "upload_mb": self.total_upload_cost_mb,
-                "download_mb": download_mb,
+                "download_mb_per_client": download_mb_per_client,
+                "download_mb_total": download_mb_total,
                 "cumulative_mb": self.total_upload_cost_mb + self.total_download_cost_mb,
                 "quantization": self.quantization,
             }
@@ -293,14 +315,21 @@ class FedAvgWithCost(FedAvg):
         results: list[tuple[ClientProxy, EvaluateRes]],
         failures: list[Union[tuple[ClientProxy, EvaluateRes], BaseException]],
     ) -> tuple[Optional[float], dict[str, Scalar]]:
-        """Agregasi hasil evaluasi dan log akurasi per ronde."""
+        """Agregasi hasil evaluasi dan log akurasi + biaya komunikasi per ronde."""
         loss, metrics = super().aggregate_evaluate(server_round, results, failures)
 
-        if loss is not None and metrics:
+        if metrics:
             accuracy = metrics.get("accuracy", 0.0)
+            # Btotal = upload + download (komunikasi dua arah)
+            total_comm_cost_mb = self.total_upload_cost_mb + self.total_download_cost_mb
             log(
                 level=logging.INFO,
-                msg=f"[Round {server_round}] Loss: {loss:.4f} | Accuracy: {accuracy:.2f}%",
+                msg=f"[Round {server_round}] Accuracy: {accuracy:.2f}%"
+                    f" | Comm Cost: {total_comm_cost_mb:.4f} MB",
             )
 
+            # Sertakan biaya komunikasi total di metrics agar masuk ke History summary
+            metrics["comm_cost_mb"] = round(total_comm_cost_mb, 4)
+
         return loss, metrics
+
