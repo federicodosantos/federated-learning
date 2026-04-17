@@ -1,0 +1,12 @@
+# Flower Federated Learning Framework
+flwr[simulation]>=1.21.0
+
+# Flower Datasets with Vision support
+flwr-datasets[vision]>=0.5.0
+
+# PyTorch dan TorchVision
+torch==2.7.1
+torchvision==0.22.1
+
+# PyTorch Ao (Architecture Optimization)
+torchao>=0.15.0

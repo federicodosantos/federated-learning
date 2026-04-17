@@ -1,9 +1,5 @@
 #!/bin/bash
 
-# Script untuk menjalankan Federated Learning dengan opsi kuantisasi
-# Usage: ./run_federated_learning.sh
-# Setiap sesi akan disimpan ke file log terpisah di folder 'logs/'
-
 # Warna untuk output
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'

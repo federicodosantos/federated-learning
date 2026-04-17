@@ -43,35 +43,35 @@ services:
     depends_on:
       - superlink
 
-  # # supernode-2:
-  #   image: flwr/supernode:1.22.0
-  #   command:
-  #     - --insecure
-  #     - --superlink
-  #     - superlink:50053
-  #     - --clientappio-api-address
-  #     - 0.0.0.0:50042
-  #     - --isolation
-  #     - process
-  #     - --node-config
-  #     - "partition-id=1 num-partitions=2"
-  #   depends_on:
-  #     - superlink
+  supernode-2:
+    image: flwr/supernode:1.22.0
+    command:
+      - --insecure
+      - --superlink
+      - superlink:50053
+      - --clientappio-api-address
+      - 0.0.0.0:50042
+      - --isolation
+      - process
+      - --node-config
+      - "partition-id=1 num-partitions=2"
+    depends_on:
+      - superlink
 
-  # # supernode-3:
-  #   image: flwr/supernode:1.22.0
-  #   command:
-  #     - --insecure
-  #     - --superlink
-  #     - superlink:50053
-  #     - --clientappio-api-address
-  #     - 0.0.0.0:50043
-  #     - --isolation
-  #     - process
-  #     - --node-config
-  #     - "partition-id=1 num-partitions=2"
-  #   depends_on:
-  #     - superlink
+  supernode-3:
+    image: flwr/supernode:1.22.0
+    command:
+      - --insecure
+      - --superlink
+      - superlink:50053
+      - --clientappio-api-address
+      - 0.0.0.0:50043
+      - --isolation
+      - process
+      - --node-config
+      - "partition-id=1 num-partitions=2"
+    depends_on:
+      - superlink
 
   superexec-clientapp-1:
     build:
@@ -93,45 +93,45 @@ services:
     depends_on:
       - supernode-1
 
-  # # superexec-clientapp-2:
-  #   build:
-  #     context: ${PROJECT_DIR:-.}
-  #     dockerfile: superexec.Dockerfile
-  #   command:
-  #     - --insecure
-  #     - --plugin-type
-  #     - clientapp
-  #     - --appio-api-address
-  #     - supernode-2:50042
-  #   deploy:
-  #     resources:
-  #       limits:
-  #         cpus: "2"
-  #   stop_signal: SIGINT
-  #   volumes:
-  #     - client2_data:/app/data
-  #   depends_on:
-  #     - supernode-2
+  superexec-clientapp-2:
+    build:
+      context: ${PROJECT_DIR:-.}
+      dockerfile: superexec.Dockerfile
+    command:
+      - --insecure
+      - --plugin-type
+      - clientapp
+      - --appio-api-address
+      - supernode-2:50042
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+    stop_signal: SIGINT
+    volumes:
+      - client2_data:/app/data
+    depends_on:
+      - supernode-2
 
-  # # superexec-clientapp-3:
-  #   build:
-  #     context: ${PROJECT_DIR:-.}
-  #     dockerfile: superexec.Dockerfile
-  #   command:
-  #     - --insecure
-  #     - --plugin-type
-  #     - clientapp
-  #     - --appio-api-address
-  #     - supernode-3:50043
-  #   deploy:
-  #     resources:
-  #       limits:
-  #         cpus: "2"
-  #   stop_signal: SIGINT
-  #   volumes:
-  #     - client3_data:/app/data
-  #   depends_on:
-  #     - supernode-3
+  superexec-clientapp-3:
+    build:
+      context: ${PROJECT_DIR:-.}
+      dockerfile: superexec.Dockerfile
+    command:
+      - --insecure
+      - --plugin-type
+      - clientapp
+      - --appio-api-address
+      - supernode-3:50043
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+    stop_signal: SIGINT
+    volumes:
+      - client3_data:/app/data
+    depends_on:
+      - supernode-3
 
 volumes:
   client1_data:

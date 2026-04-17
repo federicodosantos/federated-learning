@@ -36,9 +36,9 @@ clientapp = "fl_thesis.client_app:app"
 # Custom config values accessible via `context.run_config`
 [tool.flwr.app.config]
 num-server-rounds = 1
-fraction-fit = 0.1
+fraction-fit = 1
 min_fit_clients = 1
-fraction_evaluate = 0.1
+fraction_evaluate = 1
 min_evaluate_clients = 1
 min_available_clients = 1
 local-epochs = 1
