@@ -57,8 +57,15 @@ df = df.dropna(subset=["image_path"])
 # Shuffle untuk IID
 df = df.sample(frac=1, random_state=42).reset_index(drop=True)
 
+split_size = len(df)
+
 # Split IID
-splits = np.array_split(df, NUM_CLIENTS)
+splits = []
+
+for i in range(NUM_CLIENTS - 1):
+    splits.append(df.iloc[i * split_size : (i + 1) * split_size].reset_index(drop=True))
+
+splits.append(df.iloc[(NUM_CLIENTS - 1) * split_size :].reset_index(drop=True))
 
 # Bersihkan output
 if os.path.exists(OUTPUT_DIR):
