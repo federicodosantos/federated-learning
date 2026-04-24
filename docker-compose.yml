@@ -27,6 +27,8 @@ services:
     restart: on-failure:3
     depends_on:
       - superlink
+    volumes:
+      - ./logs:/app/logs
 
   supernode-1:
     image: flwr/supernode:1.22.0

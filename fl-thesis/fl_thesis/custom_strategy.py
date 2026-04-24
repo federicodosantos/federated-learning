@@ -1,7 +1,11 @@
 import json
 import logging
+import os
 from typing import Dict, List, Optional, Tuple, Union
 
+import matplotlib
+matplotlib.use("Agg")  # Non-interactive backend, safe for server use
+import matplotlib.pyplot as plt
 import numpy as np
 from flwr.common import (
     EvaluateRes,
@@ -36,6 +40,7 @@ class FedAvgWithCost(FedAvg):
         quantization: str = "none",
         quantization_bits: int = 8,
         shapes: Optional[List[Tuple[int, ...]]] = None,
+        num_rounds: int = 1,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
@@ -43,11 +48,15 @@ class FedAvgWithCost(FedAvg):
         self.quantization_bits = quantization_bits
         self.shapes = shapes or []
         self.last_aggregated_ndarrays = None
+        self.num_rounds = num_rounds
 
         # Communication cost tracking
         self.total_upload_cost_mb = 0.0
         self.total_download_cost_mb = 0.0
         self.communication_log = []
+
+        # Accuracy history for plotting
+        self.accuracy_history: List[Tuple[int, float]] = []  # (round, accuracy)
 
         log(
             level=logging.INFO,
@@ -331,5 +340,54 @@ class FedAvgWithCost(FedAvg):
             # Sertakan biaya komunikasi total di metrics agar masuk ke History summary
             metrics["comm_cost_mb"] = round(total_comm_cost_mb, 4)
 
+            # Catat akurasi per ronde untuk plotting
+            self.accuracy_history.append((server_round, float(accuracy)))
+
+            # Jika ini ronde terakhir, buat dan simpan grafik akurasi
+            if server_round >= self.num_rounds:
+                self._save_accuracy_plot()
+
         return loss, metrics
+
+    def _save_accuracy_plot(self) -> None:
+        """Buat dan simpan grafik akurasi global per ronde komunikasi."""
+        if not self.accuracy_history:
+            log(level=logging.WARNING, msg="[Plot] Tidak ada data akurasi untuk diplot.")
+            return
+
+        rounds = [r for r, _ in self.accuracy_history]
+        accuracies = [acc for _, acc in self.accuracy_history]
+
+        fig, ax = plt.subplots(figsize=(9, 5))
+        ax.plot(rounds, accuracies, marker="o", linewidth=2, markersize=6,
+                color="#2196F3", label="Global Accuracy")
+
+        ax.set_xlabel("Communication Round", fontsize=13)
+        ax.set_ylabel("Accuracy", fontsize=13)
+        ax.set_title(
+            f"Global Model Accuracy per Communication Round\n"
+            f"(Quantization: {self.quantization})",
+            fontsize=14,
+        )
+        ax.set_xticks(rounds)
+        ax.set_ylim(0, 1.05)
+        ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda y, _: f"{y:.0%}"))
+        ax.grid(True, linestyle="--", alpha=0.6)
+        ax.legend(fontsize=11)
+        fig.tight_layout()
+
+        # Simpan grafik di direktori logs agar rapi
+        output_dir = os.path.join(os.getcwd(), "logs")
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+
+        quant_label = "quant" if self.quantization != "none" else "no-quant"
+        output_path = os.path.join(output_dir, f"accuracy_plot_{quant_label}.png")
+        fig.savefig(output_path, dpi=150)
+        plt.close(fig)
+
+        log(
+            level=logging.INFO,
+            msg=f"[Plot] Grafik akurasi disimpan di: {output_path}",
+        )
 

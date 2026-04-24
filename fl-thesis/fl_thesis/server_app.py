@@ -65,6 +65,7 @@ def server_fn(context: Context):
         evaluate_metrics_aggregation_fn=weighted_average_metrics,
         quantization=quantization,
         quantization_bits=quantization_bits,
+        num_rounds=num_rounds,
     )
     config = ServerConfig(num_rounds=num_rounds)
 

@@ -10,3 +10,5 @@ torchvision==0.22.1
 
 # PyTorch Ao (Architecture Optimization)
 torchao>=0.15.0
+
+matplotlib>=3.7.0
