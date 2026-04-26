@@ -178,7 +178,8 @@ class FlowerClient(NumPyClient):
 
 def client_fn(context: Context):
     net = load_model()
-    trainloader, valloader = load_data()
+    batch_size = context.run_config.get("batch-size", 32)
+    trainloader, valloader = load_data(batch_size=batch_size)
     local_epochs = context.run_config["local-epochs"]
     quantization = context.run_config.get("quantization", "none")
     quantization_bits = context.run_config.get("quantization-bits", 8)

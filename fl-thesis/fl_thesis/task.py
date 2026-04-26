@@ -80,7 +80,7 @@ class FederatedSkinLesionDataset(Dataset):
 
 
 # Fungsi load_data yang dimodifikasi total
-def load_data():
+def load_data(batch_size: int = 32):
     """Memuat partisi data PAD-UFES-20."""
     log(level=logging.INFO, msg="Memuat data untuk klien saat ini...")
 
@@ -124,14 +124,14 @@ def load_data():
             msg=f"Data klien dibagi: {len_train} train / {len_val} val.",
         )
 
-    trainloader = DataLoader(ds_train, batch_size=32, shuffle=True)
+    trainloader = DataLoader(ds_train, batch_size=batch_size, shuffle=True)
 
     if ds_val:
-        testloader = DataLoader(ds_val, batch_size=32)
+        testloader = DataLoader(ds_val, batch_size=batch_size)
         log(level=logging.INFO, msg="Loader validasi siap.")
     else:
         # Jika tidak ada data val, gunakan loader kosong
-        testloader = DataLoader(torch.utils.data.TensorDataset(), batch_size=32)
+        testloader = DataLoader(torch.utils.data.TensorDataset(), batch_size=batch_size)
         log(
             level=logging.WARNING,
             msg="Peringatan: Tidak ada data validasi untuk klien ini.",

@@ -37,33 +37,59 @@ fi
 
 # Input jumlah server rounds
 echo ""
-read -p "Masukkan jumlah server rounds (default: 1): " num_rounds
+read -p "Masukkan jumlah rounds (default: 1): " num_rounds
 num_rounds=${num_rounds:-1}
 
-# Validasi input rounds (harus berupa angka)
-if ! [[ "$num_rounds" =~ ^[0-9]+$ ]]; then
-    echo -e "${RED}❌ Jumlah rounds harus berupa angka!${NC}"
+# Input batch size
+read -p "Masukkan batch size (default: 32): " batch_size
+batch_size=${batch_size:-32}
+
+# Input proporsi klien (fraction)
+read -p "Masukkan proporsi klien (0.0 - 1.0, default: 1.0): " client_fraction
+client_fraction=${client_fraction:-1.0}
+
+# Input local epochs
+read -p "Masukkan jumlah local epochs (default: 1): " local_epochs
+local_epochs=${local_epochs:-1}
+
+# Validasi input numerik
+# num_rounds, batch_size, and local_epochs must be integers
+for val in "$num_rounds" "$batch_size" "$local_epochs"; do
+    if ! [[ "$val" =~ ^[0-9]+$ ]]; then
+        echo -e "${RED}❌ Round, Batch Size, dan Epoch harus berupa angka bulat! ($val)${NC}"
+        exit 1
+    fi
+done
+
+# client_fraction can be float
+if ! [[ "$client_fraction" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+    echo -e "${RED}❌ Proporsi klien harus berupa angka atau desimal! ($client_fraction)${NC}"
     exit 1
 fi
 
-if [ "$num_rounds" -lt 1 ]; then
-    echo -e "${RED}❌ Jumlah rounds harus minimal 1!${NC}"
+if [ "$num_rounds" -lt 1 ] || [ "$batch_size" -lt 1 ] || [ "$local_epochs" -lt 1 ]; then
+    echo -e "${RED}❌ Nilai input minimal harus 1!${NC}"
     exit 1
 fi
 
 echo ""
 echo -e "${GREEN}✓ Konfigurasi:${NC}"
 echo "  - Server Rounds: $num_rounds"
+echo "  - Batch Size: $batch_size"
+echo "  - Local Epochs: $local_epochs"
+echo "  - Proporsi Klien: $client_fraction"
 
-# Menentukan perintah berdasarkan pilihan kuantisasi dan membuat nama log
+# Menentukan parameter konfigurasi
+CONFIG_PARAMS="num-server-rounds=$num_rounds batch-size=$batch_size local-epochs=$local_epochs fraction-fit=$client_fraction fraction_evaluate=$client_fraction"
+
 if [ "$quantization_choice" = "1" ]; then
     echo "  - Mode Kuantisasi: Tanpa Kuantisasi (quantization=none)"
     QUANT_LABEL="no-quant"
-    CMD="flwr run -c 'num-server-rounds=$num_rounds quantization=\"none\"' fl-thesis/. local-deployment --stream"
+    CMD="flwr run -c '$CONFIG_PARAMS quantization=\"none\"' fl-thesis/. local-deployment --stream"
 else
     echo "  - Mode Kuantisasi: Dengan Kuantisasi"
     QUANT_LABEL="with-quant"
-    CMD="flwr run -c 'num-server-rounds=$num_rounds' fl-thesis/. local-deployment --stream"
+    CMD="flwr run -c '$CONFIG_PARAMS' fl-thesis/. local-deployment --stream"
 fi
 
 # Buat nama file log dengan timestamp dan konfigurasi
