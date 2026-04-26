@@ -85,11 +85,11 @@ CONFIG_PARAMS="num-server-rounds=$num_rounds batch-size=$batch_size local-epochs
 if [ "$quantization_choice" = "1" ]; then
     echo "  - Mode Kuantisasi: Tanpa Kuantisasi (quantization=none)"
     QUANT_LABEL="no-quant"
-    CMD="flwr run -c '$CONFIG_PARAMS quantization=\"none\"' fl-thesis/. local-deployment --stream"
+    CMD="flwr run -c '$CONFIG_PARAMS quantization=\"none\"' fl-thesis/. local-deployment"
 else
     echo "  - Mode Kuantisasi: Dengan Kuantisasi"
     QUANT_LABEL="with-quant"
-    CMD="flwr run -c '$CONFIG_PARAMS' fl-thesis/. local-deployment --stream"
+    CMD="flwr run -c '$CONFIG_PARAMS' fl-thesis/. local-deployment"
 fi
 
 # Buat nama file log dengan timestamp dan konfigurasi
