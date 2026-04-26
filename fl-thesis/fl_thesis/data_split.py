@@ -14,7 +14,7 @@ IMAGE_DIRS = [
     os.path.join(BASE_DIR, "imgs_part3"),
 ]
 
-NUM_CLIENTS = 3
+NUM_CLIENTS = 10
 OUTPUT_DIR = "output_clients"
 
 BENIGN = ["ACK", "SEK", "NEV"]
@@ -57,7 +57,7 @@ df = df.dropna(subset=["image_path"])
 # Shuffle untuk IID
 df = df.sample(frac=1, random_state=42).reset_index(drop=True)
 
-split_size = len(df)
+split_size = len(df) // NUM_CLIENTS
 
 # Split IID
 splits = []
