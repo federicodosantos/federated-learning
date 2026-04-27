@@ -5,6 +5,8 @@ RUN apt-get update \
     && apt-get -y --no-install-recommends install build-essential \
     && rm -rf /var/lib/apt/lists/*
 
+RUN mkdir -p /app/logs && chown -R app:app /app/logs && chmod 755 /app/logs
+
 USER app
 WORKDIR /app
 
