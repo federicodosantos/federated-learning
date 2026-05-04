@@ -40,7 +40,7 @@ def load_model() -> ResNet:
     log(level=logging.INFO, msg="Model siap digunakan.")
     return model
 
-# Ini adalah kelas Dataset kustom yang kita diskusikan
+
 class FederatedSkinLesionDataset(Dataset):
     """Dataset kustom untuk PAD-UFES-20 di Named Volume."""
 
@@ -147,7 +147,7 @@ def train(net: ResNet, trainloader, epochs, device):
 
     net.to(device)
     criterion = torch.nn.CrossEntropyLoss().to(device)
-    optimizer = torch.optim.Adam(net.parameters(), lr=1e-4)
+    optimizer = torch.optim.SGD(net.parameters(), lr=0.001)
     net.train()
     running_loss = 0.0
 
@@ -193,7 +193,7 @@ def test(net: ResNet, testloader, device):
     criterion = torch.nn.CrossEntropyLoss()
     correct, loss = 0, 0.0
     net.eval()
-    
+
     with torch.no_grad():
         for images, labels in testloader:
             images = images.to(device)

@@ -4,6 +4,7 @@ import os
 from typing import Dict, List, Optional, Tuple, Union
 
 import matplotlib
+
 matplotlib.use("Agg")  # Non-interactive backend, safe for server use
 import matplotlib.pyplot as plt
 import numpy as np
@@ -88,7 +89,9 @@ class FedAvgWithCost(FedAvg):
 
                 # Serialisasi metadata
                 scales_serialized = json.dumps([s.tolist() for s, _ in params_list])
-                zero_points_serialized = json.dumps([zp.tolist() for _, zp in params_list])
+                zero_points_serialized = json.dumps(
+                    [zp.tolist() for _, zp in params_list]
+                )
 
                 # Sinkronisasi shapes
                 self.shapes = [arr.shape for arr in current_ndarrays]
@@ -125,20 +128,26 @@ class FedAvgWithCost(FedAvg):
                 )
                 # Fallback: gunakan parameter float32 dari hasil agregasi sebelumnya
                 if self.last_aggregated_ndarrays is not None:
-                    tensor_bytes_to_send = [arr.tobytes() for arr in self.last_aggregated_ndarrays]
+                    tensor_bytes_to_send = [
+                        arr.tobytes() for arr in self.last_aggregated_ndarrays
+                    ]
                 else:
                     tensor_bytes_to_send = [t for t in parameters.tensors]
         else:
             # Tidak ada kuantisasi — kirim parameter float32 apa adanya
             if self.last_aggregated_ndarrays is not None:
-                tensor_bytes_to_send = [arr.tobytes() for arr in self.last_aggregated_ndarrays]
+                tensor_bytes_to_send = [
+                    arr.tobytes() for arr in self.last_aggregated_ndarrays
+                ]
             else:
                 # Round 1: gunakan initial parameters
                 tensor_bytes_to_send = [t for t in parameters.tensors]
 
         # Meminta client configuration melalui strategy parent (menentukan jumlah klien yang disampling)
         try:
-            fit_ins_list = super().configure_fit(server_round, parameters, client_manager)
+            fit_ins_list = super().configure_fit(
+                server_round, parameters, client_manager
+            )
         except Exception as e:
             log(
                 level=logging.WARNING,
@@ -168,7 +177,7 @@ class FedAvgWithCost(FedAvg):
         failures: List[Union[Tuple[ClientProxy, FitRes], BaseException]],
     ) -> Tuple[Optional[Parameters], Dict[str, Scalar]]:
         """Dekuantisasi upload klien lalu agregasi dengan FedAvg."""
-        
+
         # Log biaya upload berdasarkan kiriman payload aktual (int8) sebelum kita convert menjadi Float32
         self._log_upload_cost(server_round, results)
 
@@ -180,10 +189,14 @@ class FedAvgWithCost(FedAvg):
             results = self._dequantize_fit_results(results)
 
         # Agregasi FedAvg
-        aggregated_parameters, metrics = super().aggregate_fit(server_round, results, failures)
+        aggregated_parameters, metrics = super().aggregate_fit(
+            server_round, results, failures
+        )
 
         if aggregated_parameters is not None:
-            self.last_aggregated_ndarrays = parameters_to_ndarrays(aggregated_parameters)
+            self.last_aggregated_ndarrays = parameters_to_ndarrays(
+                aggregated_parameters
+            )
 
         return aggregated_parameters, metrics
 
@@ -209,7 +222,7 @@ class FedAvgWithCost(FedAvg):
                     for s, zp in zip(scales_list, zero_points_list)
                 ]
 
-                # Decode representasi Flower Parameter → membersihkan 128-byte `.npy` header 
+                # Decode representasi Flower Parameter → membersihkan 128-byte `.npy` header
                 ndarrays = parameters_to_ndarrays(fit_res.parameters)
                 quantized_bytes = [arr.tobytes() for arr in ndarrays]
 
@@ -223,10 +236,11 @@ class FedAvgWithCost(FedAvg):
                 # Rekontruksi parameter float32 dan kembalikan metrik yang bersih
                 dequantized_params = ndarrays_to_parameters(dequantized_ndarrays)
                 new_metrics = {
-                    k: v for k, v in metrics.items()
+                    k: v
+                    for k, v in metrics.items()
                     if k not in ["quantization_scales", "quantization_zero_points"]
                 }
-                
+
                 new_fit_res = FitRes(
                     parameters=dequantized_params,
                     num_examples=fit_res.num_examples,
@@ -262,7 +276,9 @@ class FedAvgWithCost(FedAvg):
 
         savings_str = ""
         if self.quantization != "none" and self.last_aggregated_ndarrays is not None:
-            float32_mb = sum(a.nbytes for a in self.last_aggregated_ndarrays) / (1024 * 1024)
+            float32_mb = sum(a.nbytes for a in self.last_aggregated_ndarrays) / (
+                1024 * 1024
+            )
             if float32_mb > 0:
                 savings = (1.0 - upload_mb_per_client / float32_mb) * 100
                 savings_str = f" ({savings:.1f}% hemat vs float32)"
@@ -292,7 +308,9 @@ class FedAvgWithCost(FedAvg):
 
         savings_str = ""
         if self.quantization != "none" and self.last_aggregated_ndarrays is not None:
-            float32_mb = sum(a.nbytes for a in self.last_aggregated_ndarrays) / (1024 * 1024)
+            float32_mb = sum(a.nbytes for a in self.last_aggregated_ndarrays) / (
+                1024 * 1024
+            )
             if float32_mb > 0:
                 savings = (1.0 - download_mb_per_client / float32_mb) * 100
                 savings_str = f" ({savings:.1f}% hemat vs float32)"
@@ -300,7 +318,7 @@ class FedAvgWithCost(FedAvg):
         log(
             level=logging.INFO,
             msg=f"[Round {server_round}] Download: {download_mb_per_client:.4f} MB/client × {num_clients} clients"
-                f" = {download_mb_total:.4f} MB total{savings_str}",
+            f" = {download_mb_total:.4f} MB total{savings_str}",
         )
         log(
             level=logging.INFO,
@@ -313,7 +331,8 @@ class FedAvgWithCost(FedAvg):
                 "upload_mb": self.total_upload_cost_mb,
                 "download_mb_per_client": download_mb_per_client,
                 "download_mb_total": download_mb_total,
-                "cumulative_mb": self.total_upload_cost_mb + self.total_download_cost_mb,
+                "cumulative_mb": self.total_upload_cost_mb
+                + self.total_download_cost_mb,
                 "quantization": self.quantization,
             }
         )
@@ -333,8 +352,8 @@ class FedAvgWithCost(FedAvg):
             total_comm_cost_mb = self.total_upload_cost_mb + self.total_download_cost_mb
             log(
                 level=logging.INFO,
-                msg=f"[Round {server_round}] Accuracy: {accuracy:.2f}%"
-                    f" | Comm Cost: {total_comm_cost_mb:.4f} MB",
+                msg=f"[Round {server_round}] Accuracy: {accuracy * 100:.2f}%"
+                f" | Comm Cost: {total_comm_cost_mb:.4f} MB",
             )
 
             # Sertakan biaya komunikasi total di metrics agar masuk ke History summary
@@ -352,15 +371,24 @@ class FedAvgWithCost(FedAvg):
     def _save_accuracy_plot(self) -> None:
         """Buat dan simpan grafik akurasi global per ronde komunikasi."""
         if not self.accuracy_history:
-            log(level=logging.WARNING, msg="[Plot] Tidak ada data akurasi untuk diplot.")
+            log(
+                level=logging.WARNING, msg="[Plot] Tidak ada data akurasi untuk diplot."
+            )
             return
 
         rounds = [r for r, _ in self.accuracy_history]
         accuracies = [acc for _, acc in self.accuracy_history]
 
         fig, ax = plt.subplots(figsize=(9, 5))
-        ax.plot(rounds, accuracies, marker="o", linewidth=2, markersize=6,
-                color="#2196F3", label="Global Accuracy")
+        ax.plot(
+            rounds,
+            accuracies,
+            marker="o",
+            linewidth=2,
+            markersize=6,
+            color="#2196F3",
+            label="Global Accuracy",
+        )
 
         ax.set_xlabel("Communication Round", fontsize=13)
         ax.set_ylabel("Accuracy", fontsize=13)
@@ -383,11 +411,17 @@ class FedAvgWithCost(FedAvg):
 
         quant_label = "quant" if self.quantization != "none" else "no-quant"
         output_path = os.path.join(output_dir, f"accuracy_plot_{quant_label}.png")
-        fig.savefig(output_path, dpi=150)
-        plt.close(fig)
 
-        log(
-            level=logging.INFO,
-            msg=f"[Plot] Grafik akurasi disimpan di: {output_path}",
-        )
-
+        try:
+            fig.savefig(output_path, dpi=150)
+            log(
+                level=logging.INFO,
+                msg=f"[Plot] Grafik akurasi disimpan di: {output_path}",
+            )
+        except Exception as e:
+            log(
+                level=logging.WARNING,
+                msg=f"[Plot] Gagal menyimpan grafik ke {output_path}: {e}",
+            )
+        finally:
+            plt.close(fig)
