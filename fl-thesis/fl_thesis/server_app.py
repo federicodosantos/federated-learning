@@ -43,6 +43,8 @@ def server_fn(context: Context):
     fraction_fit = context.run_config["fraction-fit"]
     quantization = context.run_config.get("quantization", "none")
     quantization_bits = context.run_config.get("quantization-bits", 8)
+    batch_size = context.run_config.get("batch-size", 32)
+    local_epochs = context.run_config.get("local-epochs", 1)
 
     # Initialize model parameters and extract shapes for quantization
     model = load_model()
@@ -66,6 +68,9 @@ def server_fn(context: Context):
         quantization=quantization,
         quantization_bits=quantization_bits,
         num_rounds=num_rounds,
+        num_clients=min_available_clients,
+        batch_size=batch_size,
+        local_epochs=local_epochs,
     )
     config = ServerConfig(num_rounds=num_rounds)
 

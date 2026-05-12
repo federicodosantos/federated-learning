@@ -1,6 +1,8 @@
 import json
 import logging
+import math
 import os
+from datetime import datetime
 from typing import Dict, List, Optional, Tuple, Union
 
 import matplotlib
@@ -42,6 +44,9 @@ class FedAvgWithCost(FedAvg):
         quantization_bits: int = 8,
         shapes: Optional[List[Tuple[int, ...]]] = None,
         num_rounds: int = 1,
+        num_clients: int = 10,
+        batch_size: int = 32,
+        local_epochs: int = 1,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
@@ -51,6 +56,11 @@ class FedAvgWithCost(FedAvg):
         self.last_aggregated_ndarrays = None
         self.num_rounds = num_rounds
 
+        # Experiment config tracking
+        self.num_clients = num_clients
+        self.batch_size = batch_size
+        self.local_epochs = local_epochs
+
         # Communication cost tracking
         self.total_upload_cost_mb = 0.0
         self.total_download_cost_mb = 0.0
@@ -58,6 +68,12 @@ class FedAvgWithCost(FedAvg):
 
         # Accuracy history for plotting
         self.accuracy_history: List[Tuple[int, float]] = []  # (round, accuracy)
+
+        # RMSE quantization error history: (round, rmse)
+        self.rmse_history: List[Tuple[int, float]] = []
+
+        # Per-round structured data for JSON export
+        self.per_round_data: List[Dict] = []
 
         log(
             level=logging.INFO,
@@ -194,11 +210,58 @@ class FedAvgWithCost(FedAvg):
         )
 
         if aggregated_parameters is not None:
-            self.last_aggregated_ndarrays = parameters_to_ndarrays(
-                aggregated_parameters
-            )
+            aggregated_ndarrays = parameters_to_ndarrays(aggregated_parameters)
+
+            # Hitung RMSE quantization error: quantize lalu dequantize parameter
+            # float32 hasil agregasi, kemudian bandingkan dengan aslinya
+            if self.quantization != "none":
+                rmse = self._compute_rmse(server_round, aggregated_ndarrays)
+                if rmse is not None:
+                    self.rmse_history.append((server_round, rmse))
+                    log(
+                        level=logging.INFO,
+                        msg=f"[Round {server_round}] RMSE Quantization Error: {rmse:.6f}",
+                    )
+
+            self.last_aggregated_ndarrays = aggregated_ndarrays
 
         return aggregated_parameters, metrics
+
+    def _compute_rmse(
+        self, server_round: int, original_ndarrays: List[np.ndarray]
+    ) -> Optional[float]:
+        """Hitung RMSE antara parameter float32 asli dan hasil quantize→dequantize."""
+        try:
+            # Quantize
+            quantized_bytes, params_list = quantize_parameters(
+                original_ndarrays, bits=self.quantization_bits
+            )
+            shapes = [arr.shape for arr in original_ndarrays]
+
+            # Dequantize
+            dequantized_ndarrays = dequantize_parameters(
+                quantized_bytes, params_list, shapes, bits=self.quantization_bits
+            )
+
+            # Hitung RMSE
+            total_se = 0.0
+            total_elements = 0
+            for orig, deq in zip(original_ndarrays, dequantized_ndarrays):
+                diff = orig.astype(np.float64) - deq.astype(np.float64)
+                total_se += np.sum(diff ** 2)
+                total_elements += orig.size
+
+            if total_elements > 0:
+                rmse = math.sqrt(total_se / total_elements)
+                return rmse
+            return None
+
+        except Exception as e:
+            log(
+                level=logging.WARNING,
+                msg=f"[Round {server_round}] Gagal menghitung RMSE: {e}",
+            )
+            return None
 
     def _dequantize_fit_results(
         self, results: List[Tuple[ClientProxy, FitRes]]
@@ -362,9 +425,26 @@ class FedAvgWithCost(FedAvg):
             # Catat akurasi per ronde untuk plotting
             self.accuracy_history.append((server_round, float(accuracy)))
 
-            # Jika ini ronde terakhir, buat dan simpan grafik akurasi
+            # Catat data per ronde untuk JSON export
+            round_rmse = None
+            for r, rmse in self.rmse_history:
+                if r == server_round:
+                    round_rmse = rmse
+                    break
+
+            self.per_round_data.append({
+                "round": server_round,
+                "accuracy": float(accuracy),
+                "cumulative_comm_cost_mb": round(total_comm_cost_mb, 4),
+                "upload_mb": round(self.total_upload_cost_mb, 4),
+                "download_mb": round(self.total_download_cost_mb, 4),
+                "rmse_quantization_error": round(round_rmse, 6) if round_rmse is not None else None,
+            })
+
+            # Jika ini ronde terakhir, buat dan simpan grafik akurasi + JSON
             if server_round >= self.num_rounds:
                 self._save_accuracy_plot()
+                self._save_experiment_results()
 
         return loss, metrics
 
@@ -425,3 +505,67 @@ class FedAvgWithCost(FedAvg):
             )
         finally:
             plt.close(fig)
+
+    def _save_experiment_results(self) -> None:
+        """Simpan semua hasil eksperimen ke file JSON terstruktur."""
+        if not self.per_round_data:
+            log(
+                level=logging.WARNING,
+                msg="[JSON] Tidak ada data per-ronde untuk disimpan.",
+            )
+            return
+
+        # Hitung akurasi konvergensi (rata-rata 5 ronde terakhir)
+        accuracies = [d["accuracy"] for d in self.per_round_data]
+        last_5_acc = accuracies[-5:] if len(accuracies) >= 5 else accuracies
+        convergence_accuracy = round(sum(last_5_acc) / len(last_5_acc), 6)
+
+        # Tentukan ronde konvergensi (ronde pertama yang mencapai convergence_accuracy)
+        convergence_round = self.num_rounds
+        for d in self.per_round_data:
+            if d["accuracy"] >= convergence_accuracy:
+                convergence_round = d["round"]
+                break
+
+        quant_label = "quantization" if self.quantization != "none" else "baseline"
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+        experiment_result = {
+            "experiment_config": {
+                "quantization": self.quantization,
+                "quantization_bits": self.quantization_bits,
+                "num_rounds": self.num_rounds,
+                "num_clients": self.num_clients,
+                "batch_size": self.batch_size,
+                "local_epochs": self.local_epochs,
+                "scenario": quant_label,
+            },
+            "per_round_data": self.per_round_data,
+            "summary": {
+                "final_accuracy": round(accuracies[-1], 6) if accuracies else 0.0,
+                "total_comm_cost_mb": self.per_round_data[-1]["cumulative_comm_cost_mb"] if self.per_round_data else 0.0,
+                "convergence_accuracy": convergence_accuracy,
+                "convergence_round": convergence_round,
+            },
+        }
+
+        # Simpan ke folder experiment_results
+        output_dir = os.path.join(os.getcwd(), "experiment_results")
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+
+        filename = f"experiment_{quant_label}_k{self.num_clients}_r{self.num_rounds}_{timestamp}.json"
+        output_path = os.path.join(output_dir, filename)
+
+        try:
+            with open(output_path, "w") as f:
+                json.dump(experiment_result, f, indent=2)
+            log(
+                level=logging.INFO,
+                msg=f"[JSON] Hasil eksperimen disimpan di: {output_path}",
+            )
+        except Exception as e:
+            log(
+                level=logging.WARNING,
+                msg=f"[JSON] Gagal menyimpan hasil eksperimen: {e}",
+            )

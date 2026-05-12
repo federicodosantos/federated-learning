@@ -2,4 +2,5 @@ fl-thesis/fl_thesis/dataset
 output_clients/*
 
 logs/*
+experiment_results/*
 .env
