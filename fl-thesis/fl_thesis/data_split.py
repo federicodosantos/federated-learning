@@ -1,5 +1,6 @@
 import os
 import shutil
+import sys
 
 import numpy as np
 import pandas as pd
@@ -14,7 +15,7 @@ IMAGE_DIRS = [
     os.path.join(BASE_DIR, "imgs_part3"),
 ]
 
-NUM_CLIENTS = 10
+NUM_CLIENTS = int(sys.argv[1]) if len(sys.argv) > 1 else 10
 OUTPUT_DIR = "output_clients"
 
 BENIGN = ["ACK", "SEK", "NEV"]
