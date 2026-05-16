@@ -28,6 +28,7 @@ services:
     - superlink
     volumes:
     - ./logs:/app/logs
+    - ./experiment_results:/app/experiment_results
   supernode-1:
     image: flwr/supernode:1.22.0
     command:
@@ -358,6 +359,171 @@ services:
     - client10_data:/app/data
     depends_on:
     - supernode-10
+  supernode-11:
+    image: flwr/supernode:1.22.0
+    command:
+    - --insecure
+    - --superlink
+    - superlink:50053
+    - --clientappio-api-address
+    - 0.0.0.0:50051
+    - --isolation
+    - process
+    - --node-config
+    - partition-id=10 num-partitions=15
+    depends_on:
+    - superlink
+  superexec-clientapp-11:
+    build:
+      context: ${PROJECT_DIR:-.}
+      dockerfile: superexec.Dockerfile
+    command:
+    - --insecure
+    - --plugin-type
+    - clientapp
+    - --appio-api-address
+    - supernode-11:50051
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+    stop_signal: SIGINT
+    volumes:
+    - client11_data:/app/data
+    depends_on:
+    - supernode-11
+  supernode-12:
+    image: flwr/supernode:1.22.0
+    command:
+    - --insecure
+    - --superlink
+    - superlink:50053
+    - --clientappio-api-address
+    - 0.0.0.0:50052
+    - --isolation
+    - process
+    - --node-config
+    - partition-id=11 num-partitions=15
+    depends_on:
+    - superlink
+  superexec-clientapp-12:
+    build:
+      context: ${PROJECT_DIR:-.}
+      dockerfile: superexec.Dockerfile
+    command:
+    - --insecure
+    - --plugin-type
+    - clientapp
+    - --appio-api-address
+    - supernode-12:50052
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+    stop_signal: SIGINT
+    volumes:
+    - client12_data:/app/data
+    depends_on:
+    - supernode-12
+  supernode-13:
+    image: flwr/supernode:1.22.0
+    command:
+    - --insecure
+    - --superlink
+    - superlink:50053
+    - --clientappio-api-address
+    - 0.0.0.0:50053
+    - --isolation
+    - process
+    - --node-config
+    - partition-id=12 num-partitions=15
+    depends_on:
+    - superlink
+  superexec-clientapp-13:
+    build:
+      context: ${PROJECT_DIR:-.}
+      dockerfile: superexec.Dockerfile
+    command:
+    - --insecure
+    - --plugin-type
+    - clientapp
+    - --appio-api-address
+    - supernode-13:50053
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+    stop_signal: SIGINT
+    volumes:
+    - client13_data:/app/data
+    depends_on:
+    - supernode-13
+  supernode-14:
+    image: flwr/supernode:1.22.0
+    command:
+    - --insecure
+    - --superlink
+    - superlink:50053
+    - --clientappio-api-address
+    - 0.0.0.0:50054
+    - --isolation
+    - process
+    - --node-config
+    - partition-id=13 num-partitions=15
+    depends_on:
+    - superlink
+  superexec-clientapp-14:
+    build:
+      context: ${PROJECT_DIR:-.}
+      dockerfile: superexec.Dockerfile
+    command:
+    - --insecure
+    - --plugin-type
+    - clientapp
+    - --appio-api-address
+    - supernode-14:50054
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+    stop_signal: SIGINT
+    volumes:
+    - client14_data:/app/data
+    depends_on:
+    - supernode-14
+  supernode-15:
+    image: flwr/supernode:1.22.0
+    command:
+    - --insecure
+    - --superlink
+    - superlink:50053
+    - --clientappio-api-address
+    - 0.0.0.0:50055
+    - --isolation
+    - process
+    - --node-config
+    - partition-id=14 num-partitions=15
+    depends_on:
+    - superlink
+  superexec-clientapp-15:
+    build:
+      context: ${PROJECT_DIR:-.}
+      dockerfile: superexec.Dockerfile
+    command:
+    - --insecure
+    - --plugin-type
+    - clientapp
+    - --appio-api-address
+    - supernode-15:50055
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+    stop_signal: SIGINT
+    volumes:
+    - client15_data:/app/data
+    depends_on:
+    - supernode-15
 volumes:
   client1_data:
     external: true
@@ -378,4 +544,14 @@ volumes:
   client9_data:
     external: true
   client10_data:
+    external: true
+  client11_data:
+    external: true
+  client12_data:
+    external: true
+  client13_data:
+    external: true
+  client14_data:
+    external: true
+  client15_data:
     external: true
